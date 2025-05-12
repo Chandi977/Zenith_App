@@ -1,0 +1,38 @@
+name: ambulance_tracker
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Third-party packages (moved from dev_dependencies to here)
+  location: ^8.0.0
+  geocoding: ^3.0.0
+  google_maps_flutter: ^2.5.0
+  intl: ^0.20.2
+  flutter_svg: ^2.0.9
+  font_awesome_flutter: ^10.4.0
+  fluttertoast: ^8.2.4
+  sliding_switch: ^1.1.0
+  url_launcher: ^6.2.5
+  simple_animations: ^5.2.0
+  http: ^1.2.1
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
