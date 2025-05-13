@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:ambulance_tracker/constants.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:ambulance_tracker/screens/Login/login_screen.dart';
 import 'package:ambulance_tracker/Components/already_have_an_account_acheck.dart';
-import 'package:ambulance_tracker/Components/rounded_button.dart';
-import 'package:ambulance_tracker/Components/rounded_input_field.dart';
-import 'package:ambulance_tracker/Components/rounded_password_field.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 class SignUpScreen extends StatelessWidget {
-  const SignUpScreen({Key? key}) : super(key: key);
+  const SignUpScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -18,13 +16,134 @@ class SignUpScreen extends StatelessWidget {
   }
 }
 
-class Body extends StatelessWidget {
-  const Body({Key? key}) : super(key: key);
+class Body extends StatefulWidget {
+  const Body({super.key});
+
+  @override
+  _BodyState createState() => _BodyState();
+}
+
+class _BodyState extends State<Body> {
+  final TextEditingController fullNameController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  final TextEditingController addressController = TextEditingController();
+  final TextEditingController mobileNumberController = TextEditingController();
+  final TextEditingController otpController = TextEditingController();
+
+  bool isLoading = false;
+  bool isOtpSent = false;
+
+  Future<void> sendOtp() async {
+    final String otpApiUrl = '${dotenv.env['API_BASE_URL']}/otp/send';
+
+    if (emailController.text.isEmpty) {
+      _showError("Email is required to send OTP");
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse(otpApiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': emailController.text.trim(),
+          'userType': 'user',
+          'otpPurpose': 'register',
+        }),
+      );
+
+      final jsonResponse = json.decode(response.body);
+
+      if (response.statusCode == 200 && jsonResponse['success'] == true) {
+        setState(() {
+          isOtpSent = true;
+        });
+        _showMessage("OTP sent successfully");
+      } else {
+        _showError(jsonResponse['message'] ?? "Failed to send OTP");
+      }
+    } catch (e) {
+      _showError("Error: $e");
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Future<void> registerUser() async {
+    final String registerApiUrl = '${dotenv.env['API_BASE_URL']}/users/register';
+
+    if (fullNameController.text.isEmpty ||
+        emailController.text.isEmpty ||
+        usernameController.text.isEmpty ||
+        passwordController.text.isEmpty ||
+        otpController.text.isEmpty) {
+      _showError("All required fields must be filled");
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse(registerApiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'fullName': fullNameController.text.trim(),
+          'email': emailController.text.trim(),
+          'username': usernameController.text.trim(),
+          'password': passwordController.text.trim(),
+          'address': addressController.text.trim(),
+          'mobileNumber': mobileNumberController.text.trim(),
+          'otp': otpController.text.trim(),
+        }),
+      );
+
+      final jsonResponse = json.decode(response.body);
+
+      if (response.statusCode == 201) {
+        _showMessage("User registered successfully");
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+      } else {
+        _showError(jsonResponse['message'] ?? "Registration failed");
+      }
+    } catch (e) {
+      _showError("Error: $e");
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message, style: const TextStyle(color: Colors.red))),
+    );
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     Size size = MediaQuery.of(context).size;
-    return Background(
+    return Container(
       child: SingleChildScrollView(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -38,18 +157,73 @@ class Body extends StatelessWidget {
               "assets/images/hands.png",
               width: size.width * 0.6,
             ),
-            RoundedInputField(
-              hintText: "Your Email",
-              onChanged: (value) {},
+            TextField(
+              controller: fullNameController,
+              decoration: InputDecoration(
+                hintText: "Full Name",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
             ),
-            RoundedPasswordField(
-              onChanged: (value) {},
+            SizedBox(height: size.height * 0.02),
+            TextField(
+              controller: emailController,
+              decoration: InputDecoration(
+                hintText: "Your Email",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
             ),
-            RoundedButton(
-              text: "SIGNUP",
-              press: () {
-                // TODO: Handle sign up logic
-              },
+            SizedBox(height: size.height * 0.02),
+            TextField(
+              controller: usernameController,
+              decoration: InputDecoration(
+                hintText: "Username",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            SizedBox(height: size.height * 0.02),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: InputDecoration(
+                hintText: "Password",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            SizedBox(height: size.height * 0.02),
+            TextField(
+              controller: addressController,
+              decoration: InputDecoration(
+                hintText: "Address (Optional)",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            SizedBox(height: size.height * 0.02),
+            TextField(
+              controller: mobileNumberController,
+              decoration: InputDecoration(
+                hintText: "Mobile Number (Optional)",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            if (isOtpSent) ...[
+              SizedBox(height: size.height * 0.02),
+              TextField(
+                controller: otpController,
+                decoration: InputDecoration(
+                  hintText: "OTP",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                keyboardType: TextInputType.text,
+              ),
+            ],
+            SizedBox(height: size.height * 0.03),
+            ElevatedButton(
+              onPressed: isLoading
+                  ? null
+                  : (isOtpSent ? () => registerUser() : () => sendOtp()),
+              child: Text(isLoading
+                  ? "Please wait..."
+                  : (isOtpSent ? "SIGNUP" : "SEND OTP")),
             ),
             SizedBox(height: size.height * 0.03),
             AlreadyHaveAnAccountCheck(
@@ -61,115 +235,7 @@ class Body extends StatelessWidget {
                 );
               },
             ),
-            const OrDivider(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                SocalIcon(
-                  iconSrc: "assets/icons/facebook.svg",
-                  press: () {},
-                ),
-                SocalIcon(
-                  iconSrc: "assets/icons/twitter.svg",
-                  press: () {},
-                ),
-                SocalIcon(
-                  iconSrc: "assets/icons/google-plus.svg",
-                  press: () {},
-                ),
-              ],
-            ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class Background extends StatelessWidget {
-  final Widget child;
-  const Background({Key? key, required this.child}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    Size size = MediaQuery.of(context).size;
-    return SizedBox(
-      height: size.height,
-      width: double.infinity,
-      child: Stack(
-        alignment: Alignment.center,
-        children: <Widget>[
-          Positioned(
-            bottom: 0,
-            left: 0,
-            child: Image.asset(
-              "assets/images/main_bottom.png",
-              width: size.width * 0.25,
-            ),
-          ),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class OrDivider extends StatelessWidget {
-  const OrDivider({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: MediaQuery.of(context).size.width * 0.8,
-      child: Row(
-        children: <Widget>[
-          buildDivider(),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 10),
-            child: Text(
-              "OR",
-              style: TextStyle(
-                color: kPrimaryColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          buildDivider(),
-        ],
-      ),
-    );
-  }
-
-  Expanded buildDivider() {
-    return const Expanded(
-      child: Divider(
-        color: Color(0xFFD9D9D9),
-        height: 1.5,
-      ),
-    );
-  }
-}
-
-class SocalIcon extends StatelessWidget {
-  final String iconSrc;
-  final VoidCallback? press;
-  const SocalIcon({Key? key, required this.iconSrc, this.press}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: press,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 10),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          border: Border.all(width: 2, color: kPrimaryLightColor),
-          shape: BoxShape.circle,
-        ),
-        child: SvgPicture.asset(
-          iconSrc,
-          height: 20,
-          width: 20,
         ),
       ),
     );

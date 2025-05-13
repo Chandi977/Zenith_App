@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:ambulance_tracker/screens/Login/login_screen.dart';
-import 'package:ambulance_tracker/screens/Signup/signup_screen.dart';
 import 'package:ambulance_tracker/Components/rounded_button.dart';
 import 'package:ambulance_tracker/constants.dart';
-
+import 'package:ambulance_tracker/AmbulanceDriver/Driver_login.dart';
 class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({Key? key}) : super(key: key);
+  const WelcomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +15,7 @@ class WelcomeScreen extends StatelessWidget {
 }
 
 class Body extends StatelessWidget {
-  const Body({Key? key}) : super(key: key);
+  const Body({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +41,7 @@ class Body extends StatelessWidget {
             ),
             SizedBox(height: size.height * 0.05),
             RoundedButton(
-              text: "LOGIN",
+              text: "USER",
               press: () {
                 Navigator.push(
                   context,
@@ -51,13 +50,13 @@ class Body extends StatelessWidget {
               },
             ),
             RoundedButton(
-              text: "SIGN UP",
+              text: "AMBULANCE DRIVER",
               color: kPrimaryLightColor,
               textColor: Colors.black,
               press: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const SignUpScreen()),
+                  MaterialPageRoute(builder: (context) => const DriverLoginScreen()),
                 );
               },
             ),
@@ -70,7 +69,7 @@ class Body extends StatelessWidget {
 
 class Background extends StatelessWidget {
   final Widget child;
-  const Background({Key? key, required this.child}) : super(key: key);
+  const Background({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {

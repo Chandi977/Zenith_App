@@ -6,9 +6,9 @@ class RoundedPasswordField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
 
   const RoundedPasswordField({
-    Key? key,
+    super.key,
     this.onChanged,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

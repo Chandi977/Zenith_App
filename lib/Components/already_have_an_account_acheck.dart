@@ -6,10 +6,10 @@ class AlreadyHaveAnAccountCheck extends StatelessWidget {
   final VoidCallback? press; // Use VoidCallback for event handlers
 
   const AlreadyHaveAnAccountCheck({
-    Key? key,
+    super.key,
     this.login = true,
     this.press,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
