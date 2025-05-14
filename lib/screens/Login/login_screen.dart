@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:ambulance_tracker/User/home.dart';
 import 'package:ambulance_tracker/User/shared_preferences.dart';
+import 'package:ambulance_tracker/User/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -90,8 +91,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200 && jsonResponse['success'] == true) {
         final accessToken = jsonResponse['data']['accessToken'];
         final refreshToken = jsonResponse['data']['refreshToken'];
-
+        print('User ID from API: ${jsonResponse['data']['_id']}');
         await AuthService().saveUserData(
+          jsonResponse['data']['_id'] ?? '',
           jsonResponse['data']['username'] ?? '',
           jsonResponse['data']['email'] ?? '',
           jsonResponse['data']['fullName'] ?? '',

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
 import 'package:ambulance_tracker/User/shared_preferences.dart';
+import 'auth_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -91,7 +93,7 @@ class _HomePageState extends State<HomePage> {
           for (var ambulance in data['ambulances']) {
             _ambulanceMarkers.add(
               Marker(
-                markerId: MarkerId(ambulance['id']),
+                markerId: MarkerId(ambulance['_id']),
                 position: LatLng(ambulance['latitude'], ambulance['longitude']),
                 infoWindow: InfoWindow(title: ambulance['name']),
               ),
@@ -114,39 +116,27 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    final bool? confirm = await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Confirm Request'),
-          content: const Text('Are you sure you want to request an ambulance?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Confirm'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirm != true) {
-      return;
-    }
-
     final String apiUrl = '${dotenv.env['API_BASE_URL']}/users/send-sos';
 
     try {
+      final token = await AuthService().getToken(); // Retrieve token
+      if (token == null || token.isEmpty) {
+        print('Authorization token is missing');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Authorization token is missing')),
+        );
+        return;
+      }
+
       final userData = await AuthService().getUserData();
-      final userId = userData['userId'] ?? '';
+      final userId = userData['_id'] ?? '';
 
       final response = await http.post(
         Uri.parse(apiUrl),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token', // Include the token
+        },
         body: json.encode({
           'userId': userId,
           'currentLocation': {
@@ -157,10 +147,24 @@ class _HomePageState extends State<HomePage> {
       );
 
       if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ambulance requested successfully')),
+        final responseData = json.decode(response.body);
+        final ambulanceLocation = responseData['data']['location'];
+        final assignedDriver = responseData['data']['assignedDriver'];
+        final status = responseData['data']['status'];
+
+        // Log or use the data
+        print('Ambulance Location: $ambulanceLocation');
+        print('Assigned Driver: $assignedDriver');
+        print('Status: $status');
+
+        // Show confirmation popup
+        _showConfirmationPopup(
+          'SOS Request Sent',
+          'Ambulance assigned successfully. Status: $status',
         );
-        _startTrackingAmbulance('ambulanceId');
+
+        // Start tracking the ambulance
+        _startTrackingAmbulance(responseData['data']['_id']);
       } else {
         final errorMessage = json.decode(response.body)['message'] ?? 'Request failed';
         ScaffoldMessenger.of(context).showSnackBar(
@@ -172,6 +176,23 @@ class _HomePageState extends State<HomePage> {
         SnackBar(content: Text('Error: $e')),
       );
     }
+  }
+  void _showConfirmationPopup(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _fetchAmbulanceLocation(String ambulanceId) async {
@@ -195,6 +216,22 @@ class _HomePageState extends State<HomePage> {
       print('Error fetching ambulance location: $e');
     }
   }
+  double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double R = 6371; // Radius of the Earth in kilometers
+    final double dLat = (lat2 - lat1) * (pi / 180); // Convert to radians
+    final double dLon = (lon2 - lon1) * (pi / 180); // Convert to radians
+
+    final double a =
+        (sin(dLat / 2) * sin(dLat / 2)) +
+            (cos(lat1 * (pi / 180)) *
+                cos(lat2 * (pi / 180)) *
+                sin(dLon / 2) * sin(dLon / 2));
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    final double distance = R * c; // Distance in kilometers
+
+    return distance;
+  }
+
 
   Future<void> _calculateETA() async {
     final String apiKey = dotenv.env['GOOGLE_MAPS_API_KEY']!;
