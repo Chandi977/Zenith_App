@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ambulance_tracker/screens/Login/login_screen.dart';
+import 'package:ambulance_tracker/User/login_screen.dart';
 import 'package:ambulance_tracker/Components/rounded_button.dart';
 import 'package:ambulance_tracker/constants.dart';
 import 'package:ambulance_tracker/AmbulanceDriver/Driver_login.dart';

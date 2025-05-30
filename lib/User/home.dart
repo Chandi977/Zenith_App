@@ -6,10 +6,11 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
-import 'package:ambulance_tracker/User/shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:ambulance_tracker/screens/Welcome/welcome_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -41,40 +42,59 @@ class _HomePageState extends State<HomePage> {
     _ambulanceLocationTimer?.cancel();
     super.dispose();
   }
+  bool _sosInProgress = false;
+
+
+
+  Future<void> logout(BuildContext context) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => WelcomeScreen()),
+          (route) => false,
+    );
+  }
 
   Future<void> _getCurrentLocation() async {
     try {
-      // Request location permission
       var status = await Permission.location.request();
-
       if (status.isGranted) {
         Position position = await Geolocator.getCurrentPosition(
             desiredAccuracy: LocationAccuracy.high);
-        print('Current location fetched: ${position.latitude}, ${position.longitude}');
         setState(() {
           _currentLocation = LatLng(position.latitude, position.longitude);
         });
         await fetchNearbyAmbulances();
       } else if (status.isDenied) {
-        print('Location permission denied.');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Location permission is required to fetch your location.')),
         );
       } else if (status.isPermanentlyDenied) {
-        print('Location permission permanently denied.');
-        openAppSettings(); // Redirect user to app settings
+        openAppSettings();
       }
     } catch (e) {
       print('Error fetching current location: $e');
     }
   }
+  void _drawPolyline(List<dynamic> points) {
+    final polylinePoints = points.map((p) => LatLng(p['lat'], p['lng'])).toList();
+    final polyline = Polyline(
+      polylineId: PolylineId('route'),
+      color: Colors.blue,
+      width: 5,
+      points: polylinePoints,
+    );
+    setState(() {
+      _polylines.clear();
+      _polylines.add(polyline);
+    });
+  }
+
+
   Future<void> fetchNearbyAmbulances() async {
     final String apiUrl = '${dotenv.env['API_BASE_URL']}/ambulance/nearest';
-
-    if (_currentLocation == null) {
-      print('Current location is not available.');
-      return;
-    }
+    if (_currentLocation == null) return;
 
     try {
       final response = await http.post(
@@ -108,20 +128,51 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _simulateDriverPath(String ambulanceId) async {
+    if (_ambulanceLocation == null || _currentLocation == null) return;
+
+    final String apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+    if (apiKey.isEmpty) {
+      print('Google Maps API key is missing');
+      return;
+    }
+
+    final String url = 'https://maps.googleapis.com/maps/api/directions/json'
+        '?origin=${_ambulanceLocation!.latitude},${_ambulanceLocation!.longitude}'
+        '&destination=${_currentLocation!.latitude},${_currentLocation!.longitude}'
+        '&key=$apiKey';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final points = data['routes'][0]['overview_polyline']['points'];
+        final decodedPoints = _decodePolyline(points);
+        _drawPolyline(decodedPoints);
+      }
+    } catch (e) {
+      print('Error simulating driver path: $e');
+    }
+  }
   Future<void> _sendSOS() async {
+    if (_sosInProgress) return;
+    _sosInProgress = true;
+
     if (_currentLocation == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Current location is not available')),
       );
+      _sosInProgress = false;
       return;
     }
 
     final String apiUrl = '${dotenv.env['API_BASE_URL']}/users/send-sos';
 
     try {
-      final token = await AuthService().getToken(); // Retrieve token
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('accessToken');
+      // print(token);
       if (token == null || token.isEmpty) {
-        print('Authorization token is missing');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Authorization token is missing')),
         );
@@ -135,7 +186,7 @@ class _HomePageState extends State<HomePage> {
         Uri.parse(apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token', // Include the token
+          'Authorization': 'Bearer $token',
         },
         body: json.encode({
           'userId': userId,
@@ -148,23 +199,20 @@ class _HomePageState extends State<HomePage> {
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        final ambulanceLocation = responseData['data']['location'];
-        final assignedDriver = responseData['data']['assignedDriver'];
-        final status = responseData['data']['status'];
+        if (responseData['data'] == null) {
+          throw Exception('Invalid response data');
+        }
 
-        // Log or use the data
-        print('Ambulance Location: $ambulanceLocation');
-        print('Assigned Driver: $assignedDriver');
-        print('Status: $status');
+        final data = responseData['data'];
+        final status = data['status'] ?? 'Unknown';
 
-        // Show confirmation popup
         _showConfirmationPopup(
           'SOS Request Sent',
           'Ambulance assigned successfully. Status: $status',
         );
 
-        // Start tracking the ambulance
-        _startTrackingAmbulance(responseData['data']['_id']);
+        _startTrackingAmbulance(data['_id']);
+        _simulateDriverPath(data['_id']);
       } else {
         final errorMessage = json.decode(response.body)['message'] ?? 'Request failed';
         ScaffoldMessenger.of(context).showSnackBar(
@@ -175,8 +223,12 @@ class _HomePageState extends State<HomePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
+    } finally {
+      _sosInProgress = false;
     }
   }
+
+
   void _showConfirmationPopup(String title, String message) {
     showDialog(
       context: context,
@@ -196,16 +248,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _fetchAmbulanceLocation(String ambulanceId) async {
-    final String apiUrl = '${dotenv.env['API_BASE_URL']}/ambulance/location';
+    print(ambulanceId);
+    final String apiUrl = '${dotenv.env['API_BASE_URL']}/ambulanceDriver/ambulanceById/$ambulanceId';
+
     try {
-      final response = await http.post(
+      final response = await http.get(
         Uri.parse(apiUrl),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'ambulanceId': ambulanceId}),
       );
 
+      final data = json.decode(response.body);
+
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
         setState(() {
           _ambulanceLocation = LatLng(data['latitude'], data['longitude']);
         });
@@ -216,24 +270,40 @@ class _HomePageState extends State<HomePage> {
       print('Error fetching ambulance location: $e');
     }
   }
-  double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371; // Radius of the Earth in kilometers
-    final double dLat = (lat2 - lat1) * (pi / 180); // Convert to radians
-    final double dLon = (lon2 - lon1) * (pi / 180); // Convert to radians
 
-    final double a =
-        (sin(dLat / 2) * sin(dLat / 2)) +
-            (cos(lat1 * (pi / 180)) *
-                cos(lat2 * (pi / 180)) *
-                sin(dLon / 2) * sin(dLon / 2));
-    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    final double distance = R * c; // Distance in kilometers
 
-    return distance;
+  List<LatLng> _decodePolyline(String encoded) {
+    List<LatLng> polylinePoints = [];
+    int index = 0, len = encoded.length;
+    int lat = 0, lng = 0;
+
+    while (index < len) {
+      int b, shift = 0, result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1F) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1F) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+
+      polylinePoints.add(LatLng(lat / 1E5, lng / 1E5));
+    }
+    return polylinePoints;
   }
 
-
   Future<void> _calculateETA() async {
+
     final String apiKey = dotenv.env['GOOGLE_MAPS_API_KEY']!;
     final String url =
         'https://maps.googleapis.com/maps/api/directions/json?origin=${_ambulanceLocation!.latitude},${_ambulanceLocation!.longitude}&destination=${_currentLocation!.latitude},${_currentLocation!.longitude}&key=$apiKey';
@@ -242,6 +312,10 @@ class _HomePageState extends State<HomePage> {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        final points = data['routes'][0]['overview_polyline']['points'];
+        final decodedPoints = _decodePolyline(points);
+        _drawPolyline(decodedPoints);
+
         final duration = data['routes'][0]['legs'][0]['duration']['text'];
         setState(() {
           _eta = duration;
@@ -322,7 +396,9 @@ class _HomePageState extends State<HomePage> {
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),
-              onTap: () {},
+              onTap: () async {
+                await logout(context);
+              },
             ),
           ],
         ),
@@ -394,7 +470,6 @@ class _HomePageState extends State<HomePage> {
                         throw Exception('No locations found');
                       }
                     } catch (e) {
-                      print('Error during location search: $e');
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Location not found or invalid input')),
                       );
@@ -411,7 +486,7 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               children: [
                 FloatingActionButton(
-                  heroTag: 'zoomInButton', // Unique heroTag
+                  heroTag: 'zoomInButton',
                   onPressed: () {
                     if (_mapController != null) {
                       _currentZoom += 1;
@@ -422,7 +497,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 10),
                 FloatingActionButton(
-                  heroTag: 'zoomOutButton', // Unique heroTag
+                  heroTag: 'zoomOutButton',
                   onPressed: () {
                     if (_mapController != null) {
                       _currentZoom -= 1;
